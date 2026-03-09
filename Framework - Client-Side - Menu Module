@@ -1994,34 +1994,36 @@ do
 		menu:refreshspawn()
 		if not menu:isdeployed() then
 			input.mouse:show()---temporary
-			--------------------------------------------------
-			-- OPERATOR SELECTION SYSTEM
-			--------------------------------------------------
-
 			local ReplicatedStorage = game:GetService("ReplicatedStorage")
 			local SetOperator = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetOperator")
 
-			local operatorsFrame = gui:WaitForChild("Operators")
+			local player = game.Players.LocalPlayer
+			local playerGui = player:WaitForChild("PlayerGui")
+			local menuGui = playerGui:WaitForChild("Menu")
+			local operatorsFrame = menuGui:WaitForChild("Operators")
 
-			for _,frame in pairs(operatorsFrame:GetChildren()) do
+			local misc = ReplicatedStorage:WaitForChild("Miscs")   -- must match your hierarchy
+			local lobby = misc:WaitForChild("Lobby")      -- used for SACStage
 
+			for _, frame in pairs(operatorsFrame:GetChildren()) do
 				local button = frame:FindFirstChild("Select")
-
 				if button then
-
 					button.MouseButton1Click:Connect(function()
-
 						local operatorName = frame.Name
+						print("Selected Operator:", operatorName)
 
-						print("Selected Operator:",operatorName)
-
+						-- Send operator choice to server
 						SetOperator:FireServer(operatorName)
 
+						-- Move camera to SACStage for preview
+						camera:setsaccam(lobby)
+
+						-- Optional: highlight selection visually
+						frame.BackgroundColor3 = Color3.fromRGB(70,70,70)
 					end)
-
 				end
-
 			end
+
 			local function setpreviewfit(folder)
 
 				for _,v in pairs(previewfit:GetChildren()) do
