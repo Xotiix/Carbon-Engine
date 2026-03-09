@@ -31,6 +31,8 @@ do
 	local misc					=repstore.Miscs
 	local ignore				=workspace.Ignore
 
+	local operatorsfolder = repstore:WaitForChild("Operators")
+	local selectedoperator = nil
 
 	local settings				=game.ReplicatedStorage.ServerSettings
 	local allowspawn			=settings.AllowSpawn
@@ -116,6 +118,21 @@ do
 	local GunStage              =lobby.GunStage
 	local SACStage              =lobby.SACStage
 	local previewfit            =wfc(SACStage,"PREVIEWFIT")
+	local function setpreview(operatorfolder)
+
+		for _,v in pairs(previewfit:GetChildren()) do
+			if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") then
+				v:Destroy()
+			end
+		end
+
+		for _,v in pairs(operatorfolder:GetChildren()) do
+			v:Clone().Parent = previewfit
+		end
+
+		selectedoperator = operatorfolder.Name
+
+	end
 	local focus					=wfc(CharStage,"Focus")
 	local stand					=wfc(GunStage,"Stand")
 	local stans				    =wfc(CharStage,"Stand")
@@ -455,11 +472,11 @@ do
 	end
 
 	local slist={
-	menu = mainmenu,
-	option = mainoption,
-	loadout = mainloadout,
-	operators = operators
-}
+		menu = mainmenu,
+		option = mainoption,
+		loadout = mainloadout,
+		operators = operators
+	}
 	local function mainswitch(type)
 		for i,v in next,slist do
 			v.Visible=false
@@ -1618,6 +1635,7 @@ do
 			updatecontroltype()
 		end)
 		s.deploy.MouseButton1Click:connect(deploy)
+		repstore.Remotes.SetOperator:FireServer(selectedoperator)
 		--game:GetService("UserInputService").InputBegan:connect(function(keycode)
 		--local key=keycode.KeyCode
 		--if key==Enum.KeyCode.Space and not menu:isdeployed() then	
@@ -1976,19 +1994,6 @@ do
 		menu:refreshspawn()
 		if not menu:isdeployed() then
 			input.mouse:show()---temporary
-			game:GetService("RunService").RenderStepped:Connect(function(dt)
-
-				if previewfit and previewfit.PrimaryPart then
-
-					local cf = previewfit.PrimaryPart.CFrame
-
-					previewfit:SetPrimaryPartCFrame(
-						cf * CFrame.Angles(0, math.rad(20)*dt, 0)
-					)
-
-				end
-
-			end)
 			local function setpreviewfit(folder)
 
 				for _,v in pairs(previewfit:GetChildren()) do
