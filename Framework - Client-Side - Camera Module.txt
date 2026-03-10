@@ -83,10 +83,6 @@ do
 	local lobbyparts
 	local lobbyfocuss
 
-	local curlsac
-	local sacpart
-	local sacfocus
-
 	local fireonprerender	=event.new(camera.onprerender)
 	local fireonpostrender	=event.new(camera.onpostrender)
 
@@ -194,22 +190,6 @@ do
 		camera:transitionToMenu(lobbyparts, lobbyfocuss)
 	end
 
-	function camera:setsaccam(lobby)
-		camera.menufov = 60
-		camera.type = "sacmenu"
-
-		local stage = lobby:WaitForChild("SACStage")
-
-		sacpart = stage:WaitForChild("CamPos")
-		sacfocus = stage:WaitForChild("Focus")
-
-		if sacpart and sacfocus then
-			camera:transitionToMenu(sacpart, sacfocus)
-		else
-			warn("SACStage camera setup failed")
-		end
-	end
-
 	function camera:setfirstpersoncam()
 		camera.type="firstperson"
 		camera.FieldOfView=camera.basefov
@@ -309,7 +289,7 @@ do
 				camera.lookvector=camera.cframe.lookVector
 			end
 			camera.currentcamera.FieldOfView=camera.basefov
-		elseif camera.type=="menu" or camera.type=="menussssss" or camera.type=="sacmenu" then
+		elseif camera.type=="menu" or camera.type=="menussssss" then
 			local camPos, focusPos
 			if camera.transitioning then
 				camera.transitionProgress = math.min(camera.transitionProgress + dt / camera.transitionTime, 1)
@@ -330,23 +310,8 @@ do
 					camera.transitioning = false
 				end
 			else
-				if camera.type == "menu" then
-					camPos = lobbypart.Position
-					focusPos = lobbyfocus.Position
-
-				elseif camera.type == "menussssss" then
-					camPos = lobbyparts.Position
-					focusPos = lobbyfocuss.Position
-
-				elseif camera.type == "sacmenu" then
-					if sacpart and sacfocus then
-						camPos = sacpart.Position
-						focusPos = sacfocus.Position
-					else
-						warn("SACStage camera parts missing")
-						return
-					end
-				end
+				camPos = (camera.type=="menu" and lobbypart.Position) or lobbyparts.Position
+				focusPos = (camera.type=="menu" and lobbyfocus.Position) or lobbyfocuss.Position
 			end
 
 			local camCFrame = CFrame.new(camPos, focusPos)
