@@ -31,8 +31,6 @@ do
 	local misc					=repstore.Miscs
 	local ignore				=workspace.Ignore
 
-	local operatorsfolder = repstore:WaitForChild("Operators")
-	local selectedoperator = nil
 
 	local settings				=game.ReplicatedStorage.ServerSettings
 	local allowspawn			=settings.AllowSpawn
@@ -115,60 +113,13 @@ do
 
 	local lobby					=misc.Lobby:Clone()
 	local CharStage             =lobby.CharStage
-	local GunStage              =lobby.GunStage
-	local SACStage              =lobby.SACStage
-	local previewfit            =wfc(SACStage,"PREVIEWFIT")
-	local function setpreview(operatorfolder)
-
-		for _,v in pairs(previewfit:GetChildren()) do
-			if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") then
-				v:Destroy()
-			end
-		end
-
-		for _,v in pairs(operatorfolder:GetChildren()) do
-			v:Clone().Parent = previewfit
-		end
-
-		selectedoperator = operatorfolder.Name
-
-	end
+	local GunStage             =lobby.GunStage
 	local focus					=wfc(CharStage,"Focus")
 	local stand					=wfc(GunStage,"Stand")
-	local stans				    =wfc(CharStage,"Stand")
+	local stans				=wfc(CharStage,"Stand")
 	local campos				=wfc(CharStage,"CamPos")	
 	local modelfolder			=wfc(GunStage,"GunModel")
 	local menugui				=wfc(pgui,"Menu")
-
-	--------------------------------------------------
-	-- OPERATOR PREVIEW FUNCTION
-	--------------------------------------------------
-	local function updateOperatorPreview(operatorName)
-		-- Lobby and SACStage references
-		local lobby = menugui:WaitForChild("Lobby")
-		local sacStage = lobby:WaitForChild("SACStage")
-		local preview = sacStage:WaitForChild("PREVIEWFIT")
-
-		-- Clear previous outfit
-		for _, child in ipairs(preview:GetChildren()) do
-			if child:IsA("Accessory") or child:IsA("Model") or child:IsA("Part") then
-				child:Destroy()
-			end
-		end
-
-		-- Get the uniform model from ReplicatedStorage
-		local uniformFolder = game.ReplicatedStorage.Character:FindFirstChild(operatorName)
-		if not uniformFolder then
-			warn("Operator uniform not found:", operatorName)
-			return
-		end
-
-		-- Clone uniform into preview
-		for _, item in ipairs(uniformFolder:GetChildren()) do
-			local clone = item:Clone()
-			clone.Parent = preview
-		end
-	end
 
 	if input.consoleon then
 		menugui:Destroy()
@@ -181,7 +132,6 @@ do
 	local mainloadout			=wfc(menugui,"MainLoadout")
 	local mainmenu				=wfc(menugui,"MainMenu")
 	local mainoption			=wfc(menugui,"MainOption")
-	local operators				=wfc(menugui,"Operators")
 
 	local source				=wfc(menugui,"Source")
 	local intermission			=wfc(mainmenu,"Intermission")
@@ -204,11 +154,10 @@ do
 	local mapimg				=wfc(stage,"MapImg")
 
 	local s={
-		deploy = wfc(loadbar,"Deploy"),
-		loadout = wfc(selection,"Loadout"),
-		menu = wfc(selection,"Menu"),
-		option = wfc(selection,"Option"),
-		operators = wfc(selection,"Operators")
+		deploy					=wfc(loadbar,"Deploy"),
+		loadout					=wfc(selection,"Loadout"),
+		menu					=wfc(selection,"Menu"),
+		option					=wfc(selection,"Option"),
 	}
 
 	gunclass={
@@ -501,12 +450,7 @@ do
 		end
 	end
 
-	local slist={
-		menu = mainmenu,
-		option = mainoption,
-		loadout = mainloadout,
-		operators = operators
-	}
+	local slist={menu=mainmenu,option=mainoption,loadout=mainloadout}
 	local function mainswitch(type)
 		for i,v in next,slist do
 			v.Visible=false
@@ -1665,7 +1609,6 @@ do
 			updatecontroltype()
 		end)
 		s.deploy.MouseButton1Click:connect(deploy)
-		repstore.Remotes.SetOperator:FireServer(selectedoperator)
 		--game:GetService("UserInputService").InputBegan:connect(function(keycode)
 		--local key=keycode.KeyCode
 		--if key==Enum.KeyCode.Space and not menu:isdeployed() then	
@@ -1997,11 +1940,6 @@ do
 		mainswitch("menu") 
 		camera:setmenucam(lobby)
 	end)
-	s.operators.MouseButton1Click:connect(function()
-		-- When opening the Operator menu
-		mainswitch("Operators") -- show Operators frame
-		camera:setsaccam(menugui.Lobby) -- move camera to SACStage
-	end)
 	s.option.MouseButton1Click:connect(function() mainswitch("option") end)
 
 	network:add("autodespawn",function()
@@ -2025,49 +1963,6 @@ do
 		menu:refreshspawn()
 		if not menu:isdeployed() then
 			input.mouse:show()---temporary
-			--------------------------------------------------
-			-- OPERATOR BUTTONS
-			--------------------------------------------------
-			local operatorsFrame = menugui:WaitForChild("Operators")
-			local SetOperator = game.ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("SetOperator")
-
-			local selectedFrame = nil
-
-			for _, frame in pairs(operatorsFrame:GetChildren()) do
-				local button = frame:FindFirstChild("Select")
-				if button then
-					button.MouseButton1Click:Connect(function()
-						local operatorName = frame.Name
-
-						-- Update the preview model
-						updateOperatorPreview(operatorName)
-
-						-- Send selection to server
-						SetOperator:FireServer(operatorName)
-
-						-- Highlight the selected operator
-						if selectedFrame then
-							selectedFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-						end
-						frame.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-						selectedFrame = frame
-					end)
-				end
-			end
-
-			local function setpreviewfit(folder)
-
-				for _,v in pairs(previewfit:GetChildren()) do
-					if v:IsA("Shirt") or v:IsA("Pants") or v:IsA("Accessory") then
-						v:Destroy()
-					end
-				end
-
-				for _,v in pairs(folder:GetChildren()) do
-					v:Clone().Parent = previewfit
-				end
-
-			end
 		end
 
 	end
