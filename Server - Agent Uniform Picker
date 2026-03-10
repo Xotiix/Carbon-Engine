@@ -104,3 +104,43 @@
 		end
 		return nil
 	end
+
+			--========================================================--
+			-- EQUIP AGENTS RESERVED UNIFORMS
+			--========================================================--
+
+			local char = player.Character
+			local team = player.TeamColor.Name == "Royal purple" and "REIGN" or "ANARCHY"
+			local teamFolder = repchar:FindFirstChild(team)
+			local exclusiveFolder = repchar:FindFirstChild("Exclusive Agents") -- reserved uniforms folder
+
+			local uniformSet = nil
+
+			-- 1️⃣ Check Exclusive Agents first (reserved uniforms)
+			if exclusiveFolder then
+				for _, u in ipairs(exclusiveFolder:GetChildren()) do
+					local props = UniformProperties[u.Name]
+					if props and props.reservedFor and table.find(props.reservedFor, player.Name) then
+						uniformSet = u
+						break
+					end
+				end
+			end
+
+			-- 2️⃣ Fallback to previous or random team uniform
+			if not uniformSet and teamFolder then
+				local previous = GetPreviousUniform(player, teamFolder)
+				uniformSet = previous or PickUniqueUniform(player, teamFolder)
+			end
+
+			-- 3️⃣ Equip the chosen uniform(faggot)
+			if uniformSet then
+				lastUniformEquipped[player.UserId] = uniformSet.Name
+				for _, item in ipairs(uniformSet:GetChildren()) do
+					item:Clone().Parent = char
+				end
+				usedUniformsGlobal[uniformSet.Name] = player.Name
+				print("AGENT ->", player.Name, "=", uniformSet.Name)
+			else
+				warn("STATUS|AGENT RESPAWN MALFUNCTION", player.Name)
+			end
