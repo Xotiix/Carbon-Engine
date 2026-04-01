@@ -1,3 +1,403 @@
+--char module
+--By AxisAngle (Trey Reynolds)
+print("Loading char module")
+do
+	local rtype = game.IsA
+	local next = next
+	local new = Instance.new
+	local wfc = game.WaitForChild
+	local ffc = game.FindFirstChild
+	local getchildren = game.GetChildren
+	local workspace = game.Workspace
+	local cf = CFrame.new
+	local vtws = CFrame.new().vectorToWorldSpace
+	local angles = CFrame.Angles
+	local nc = cf()
+	local v3 = Vector3.new
+	local nv = v3()
+	local ray = Ray.new
+	local raycast = workspace.FindPartOnRayWithIgnoreList
+	local debris = game.Debris
+	local dot = nv.Dot
+	local ud2 = UDim2.new
+	local abs = math.abs
+	local tos = cf().toObjectSpace
+	local player = game:GetService("Players").LocalPlayer
+	local pgui = player.PlayerGui
+	local repstore = game.ReplicatedStorage
+	local repchar = repstore.Character
+	local attmodels = repstore.AttachmentModels
+	local character, humanoid, rootpart, rootjoint, statsloaded
+	local thread = sequencer.new()
+	local weapon
+	local aiming = false
+	local auto = false
+	local burst = 0
+	local reloading = false
+	local sprinting = false
+	local animating = false
+	local stability = 0
+	local basewalkspeed = 16
+	local sprintspring = physics.spring.new()
+	local climbing = physics.spring.new()
+	local curgunid = 0
+	local aimspring = physics.spring.new()
+	local zoommodspring = physics.spring.new(1)
+	zoommodspring.s = 12
+	zoommodspring.d = 0.95
+	local loadedgundata = {}
+	char.unaimedfov = 80
+	function char.setunaimedfov(value)
+		char.unaimedfov = value
+	end
+	function char.addgun(gundata)
+		for i = 1, curgunid do
+			if loadedgundata[i] == gundata then
+				error("Error, tried to add gun twice")
+				break
+			end
+		end
+		curgunid = curgunid + 1
+		loadedgundata[curgunid] = gundata
+		gundata.id = curgunid
+		return curgunid
+	end
+	function char.removegun(gundata)
+		local found
+		for i = 1, curgunid do
+			if loadedgundata[i] == gundata then
+				found = true
+				break
+			end
+		end
+		if not found then
+			error("Error, tried to remove gun twice")
+		end
+		local gunid = gundata.id
+		gundata.id = nil
+		loadedgundata[gunid] = loadedgundata[curgunid]
+		loadedgundata[curgunid] = nil
+		curgunid = curgunid - 1
+		local replacement = loadedgundata[gunid]
+		if replacement then
+			replacement.id = gunid
+		end
+	end
+	function char.unloadguns()
+		curgunid = 0
+		loadedgundata = {}
+	end
+	local swingspring = physics.spring.new(nv)
+	local speedspring = physics.spring.new()
+	local velocityspring = physics.spring.new(nv)
+	local pronespring = physics.spring.new(0)
+	local truespeedspring = physics.spring.new(0)
+	local equipspring = physics.spring.new(1)
+	local muzzlespring = physics.spring.new(0)
+	local walkspeedmult = 1
+
+	-- Sprint: slower ramp, more commitment
+	sprintspring.s = 10
+	sprintspring.d = 1.05
+
+	-- Climbing: weighty but controlled
+	climbing.s = 10
+	climbing.d = 1.0
+
+	-- Aiming: slight inertia, not sticky
+	aimspring.d = 1.1
+
+	-- Weapon swing: soft, floaty, persistent
+	swingspring.s = 7
+	swingspring.d = 1.1
+
+	-- Speed perception: delayed acceleration
+	speedspring.s = 12
+
+	-- Velocity: main inertia driver
+	velocityspring.s = 12
+	velocityspring.d = 1.05
+
+	-- Prone transitions feel heavy
+	pronespring.s = 6
+	pronespring.d = 1.1
+
+	-- True speed lag (player “mass”)
+	truespeedspring.s = 6
+	truespeedspring.d = 1.1
+
+	-- Equip: heavy weapon presence
+	equipspring.s = 9
+	equipspring.d = 1.0
+	local ignore = {
+		workspace.Ignore,
+		game.Workspace.CurrentCamera
+	}
+	local backwardsmult = 0.8
+	local bodyforce = new("BodyVelocity")
+	bodyforce.Name = "\n"
+	local muzzlelight, walkspeedspring, headheightspring, updatewalkspeed
+	walkspeedspring = physics.spring.new(basewalkspeed)
+	walkspeedspring.s = 8
+	headheightspring = physics.spring.new(1.5)
+	headheightspring.s = 8
+	char.acceleration = nv
+	bodyforce.MaxForce = nv
+	local jumpallowed
+	do
+		local movementmode = "stand"
+		local down = v3(0, -5, 0)
+		local crouchcf		=cf(0,-1.5,0)--arb
+		local standcf		=nc
+
+		local pronecf		=cf(0,-1.5,1.5,1,0,0,0,0,1,0,-1,0)--arb
+		function updatewalkspeed()
+			if sprinting then
+				walkspeedspring.t = 1.4 * walkspeedmult * basewalkspeed
+			elseif movementmode == "prone" then
+				walkspeedspring.t = walkspeedmult * basewalkspeed / 4
+			elseif movementmode == "crouch" then
+				walkspeedspring.t = walkspeedmult * basewalkspeed / 2
+			elseif movementmode == "stand" then
+				walkspeedspring.t = walkspeedmult * basewalkspeed
+			end
+		end
+		local function setmovementmode(self, mode, dive)
+			local oldmode = char.movementmode
+			char.movementmode = mode
+			movementmode = mode
+			if mode == "prone" then
+				if not dive and oldmode ~= mode then
+					sound.play("stanceProne", 0.15)
+				end
+				rootjoint.C0=pronecf
+				headheightspring.t = -1.5
+				pronespring.t = 1
+				walkspeedspring.t = walkspeedmult * basewalkspeed / 4
+				hud:setcrossscale(0.5)
+				stability = 0.25
+				if dive and sprinting and rootpart.Velocity.Y > -5 then
+					task.spawn(function()
+						local camCF = camera.currentcamera.CFrame
+
+						-- READ INPUT
+						local inputDir = Vector3.zero
+						if input.keyboard.down.w then inputDir += camCF.LookVector end
+						if input.keyboard.down.s then inputDir -= camCF.LookVector end
+						if input.keyboard.down.a then inputDir -= camCF.RightVector end
+						if input.keyboard.down.d then inputDir += camCF.RightVector end
+
+						-- FLATTEN DIRECTION (NO PITCH)
+						local rawDir =
+							(inputDir.Magnitude > 0 and inputDir)
+							or camCF.LookVector
+
+						local jumpDir = Vector3.new(rawDir.X, 0, rawDir.Z).Unit
+
+						-- PHASE 1: SNAP
+						rootpart.Velocity =
+							jumpDir * (72 * loltimescale)
+							+ Vector3.new(0, 52 * loltimescale, 0)
+
+						-- PHASE 2: ASSIST
+						task.wait(0.11 / loltimescale)
+						rootpart.Velocity =
+							jumpDir * (48 * loltimescale)
+							+ Vector3.new(0, 34 * loltimescale, 0)
+
+						-- PHASE 3: APEX HOLD
+						task.wait(0.14 / loltimescale)
+						rootpart.Velocity =
+							jumpDir * (40 * loltimescale)
+							+ Vector3.new(0, 10 * loltimescale, 0)
+
+						-- PHASE 4: DROP
+						task.wait(0.20 / loltimescale)
+						rootpart.Velocity =
+							jumpDir * (18 * loltimescale)
+							+ Vector3.new(0, -18 * loltimescale, 0)
+					end)
+				end
+			elseif mode == "crouch" then
+				if not dive and oldmode ~= mode then
+					sound.play("stanceStandCrouch", 0.15)
+				end
+
+				headheightspring.t = 0
+				rootjoint.C0 = crouchcf
+				pronespring.t = 0
+				walkspeedspring.t = walkspeedmult * basewalkspeed / 2
+				hud:setcrossscale(0.75)
+				stability = 0.25
+
+				if dive and sprinting and humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then 
+					isSliding = true
+					sound.play("slideStart", 0.25)
+
+					task.spawn(function()
+						-- Strong horizontal bite, limited vertical
+						bodyforce.MaxForce = Vector3.new(110000, 35, 110000)
+
+						local camCF = camera.currentcamera.CFrame
+
+						-- START FROM REAL VELOCITY (momentum)
+						local slideVel = rootpart.AssemblyLinearVelocity
+
+						-- HARD ENTRY PUNCH (Marathon-style)
+						slideVel += camCF.LookVector * 18
+
+						-- Steering (heavy, resistant)
+						local steerStrength = 0.08
+
+						-- Speed control
+						local speed = math.max(slideVel.Magnitude, 55)
+
+						for i = 1, 28 do
+							if not isSliding then break end
+
+							local camCF = camera.currentcamera.CFrame
+							local moveDir = Vector3.zero
+
+							if input.keyboard.down.w then moveDir += camCF.LookVector end
+							if input.keyboard.down.s then moveDir -= camCF.LookVector end
+							if input.keyboard.down.a then moveDir -= camCF.RightVector end
+							if input.keyboard.down.d then moveDir += camCF.RightVector end
+
+							if moveDir.Magnitude > 0 then
+								-- HARD snap velocity direction to input intent (kills forward creep)
+								slideVel = moveDir.Unit * slideVel.Magnitude
+							else
+								-- No input → preserve current slide direction
+								slideVel = slideVel
+							end
+
+							-- NONLINEAR DECAY (front-loaded loss, long tail)
+							if i < 6 then
+								speed -= 2.2   -- punch bleeds fast
+							else
+								speed -= 0.9   -- gritty crawl
+							end
+
+							speed = math.max(speed, 10)
+
+							bodyforce.Velocity = slideVel.Unit * speed
+							task.wait(1/60)
+						end
+
+						-- Release force WITHOUT snapping
+						bodyforce.MaxForce = Vector3.zero
+						bodyforce.Velocity = Vector3.zero
+
+						if isSliding then
+							isSliding = false
+							sound.play("slideEnd", 0.15)
+
+							-- Exit keeps grit, no boost
+							rootpart.Velocity =
+								slideVel.Unit * math.max(speed * 0.45, 14)
+								+ Vector3.new(0, rootpart.Velocity.Y, 0)
+						end
+					end)
+				end
+			elseif mode == "stand" then
+				if oldmode ~= mode then
+					sound.play("stanceStandCrouch", 0.15)
+				end
+				headheightspring.t = 1.5
+				rootjoint.C0=standcf
+				pronespring.t = 0
+				walkspeedspring.t = walkspeedmult * basewalkspeed
+				hud:setcrossscale(1)
+				stability = 0
+			end
+			network:bounce("stance",player,mode)
+			sprinting=false
+			network:bounce("sprint",player,sprinting)
+			sprintspring.t=0
+		end
+		function char.getstate()
+			return humanoid:GetState()
+		end
+		function char:sprinting()
+			return sprinting
+		end
+		char.setmovementmode = setmovementmode
+		function char:setbasewalkspeed(newspeed)
+			basewalkspeed = newspeed
+			updatewalkspeed()
+		end
+		function char:setsprint(on)
+			if on then
+				setmovementmode(nil,"stand")
+				sprinting=true
+				network:bounce("sprint",player,sprinting)
+				auto=false
+				burst=0
+				if weapon and aiming and weapon.type~="KNIFE" then
+					weapon:setaim(false)
+				end
+				walkspeedmult=1
+				if not reloading and not animating then
+					sprintspring.t=1
+				end
+				walkspeedspring.t=1.5*walkspeedmult*basewalkspeed
+			elseif sprinting then
+				sprinting=false
+				network:bounce("sprint",player,sprinting)
+				sprintspring.t=0
+				walkspeedspring.t=walkspeedmult*basewalkspeed
+			end
+		end
+		local function parkour()
+			if weapon and not reloading and not char.grenadehold then
+				weapon:playanimation("parkour")
+			end
+			sound.play("parkour", 0.25)
+			bodyforce.MaxForce = nv
+			local bp = new("BodyPosition")
+			bp.Name = "\n"
+			bp.position = rootpart.Position + rootpart.CFrame.lookVector.unit * (char.speed * loltimescale) * 1.5 + v3(0, 15, 0)
+			bp.maxForce = v3(9000000, 9000000, 9000000)
+			bp.P = 4500
+			bp.Parent = rootpart
+			debris:AddItem(bp, 0.45)
+		end
+		function char:jump(height)
+			local rootcf = rootpart.CFrame
+			if raycast(workspace, ray(rootcf.p, vtws(rootcf, down)), { workspace.CurrentCamera }) then
+				if movementmode == "prone" or movementmode == "crouch" then
+					if humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+						setmovementmode(nil, "stand")
+					end
+				else
+					if not reloading and not aiming and not char.grenadehold then
+						local r1 = ray(rootpart.CFrame.p + v3(0, 1.5, 0), rootpart.CFrame.lookVector * 25 + v3(0, 2, 0))
+						local h1, e1 = raycast(workspace, r1, { character, camera.currentcamera })
+
+						local r2 = ray(rootpart.CFrame.p - v3(0, .8, 0), rootpart.CFrame.lookVector * 25 - v3(0, .8, 0))
+						local h2, e2 = raycast(workspace, r2, { character, camera.currentcamera })
+
+						local r3 = ray(rootpart.CFrame.p - v3(0, 1.2, 0), rootpart.CFrame.lookVector * 25 - v3(0, 1.2, 0))
+						local h3, e3 = raycast(workspace, r3, { character, camera.currentcamera })
+
+						if h3 and (e3 - e2).Magnitude < 0.5 and (e3 - e1).Magnitude > 4 then
+							parkour(h3)
+						else
+							rootpart.Velocity += Vector3.new(0, height and (392.4 * height) ^ 0.5 or 40, 0)
+						end
+					else
+						rootpart.Velocity += Vector3.new(0, height and (392.4 * height) ^ 0.5 or 40, 0)
+					end
+				end
+			end
+		end
+	end
+
+
+
+
+
+
 	--WEAPONS MODULE LEL
 
 	--Add dynamic animation shit
